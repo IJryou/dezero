@@ -3,24 +3,53 @@ import numpy as np
 class Variable:
     def __init__(self, data):
         self.data = data
+        self.grad = None
+        self.creator = None
+    
+    def set_creator(self, func):
+        self.creator = func
+
+    def backward(self):
+        funcs = [self.creator]
+        while funcs:
+            f = funcs.pop() # 앞의 함수를 가져온다
+            x, y = f.input, f.output # 함수의 입력과 출력을 가져온다
+            x.grad = f.backward(y.grad) # backward 메서드 호출
+
+            if x.creator is not None:
+                funcs.append(x.creator) # 하나 앞의 함수를 리스트에 추가한다
 
 class Function:
     def __call__(self, input): # 여기서 input은 variable 인스턴스로 가정
         x = input.data # data를 꺼낸다
         y = self.forward(x)
         output = Variable(y) # Variable 형태로 되돌린다
+        output.set_creator(self) # 출력 변수에 창조자(creator) 설정
+        self.input = input # 입력변수를 기억해둔다
+        self.output = output # 출력도 저장해버리기
         return output
     
     def forward(self, x):
         raise NotImplementedError()
 
+    def backward(self, gy):
+        raise NotImplementedError()
+
 class Square(Function):
     def forward(self, x):
         return x ** 2
+    
+    def backward(self, gy):
+        x = self.input.data
+        return 2 * x * gy
 
 class Exp(Function):
     def forward(self, x):
         return np.exp(x)
+    
+    def backward(self, gy):
+        x = self.input.data
+        return np.exp(x) * gy
 
 def numerical_diff(f, x, eps=1e-4):
     x0 = Variable(x.data + eps)
@@ -85,3 +114,55 @@ def f(x):
 x = Variable(np.array(0.5))
 y = numerical_diff(f, x)
 print(y)
+
+print("------------------ Backward From Chap3 ------------------")
+
+A = Square()
+B = Exp()
+C = Square()
+
+x_3 = Variable(np.array(0.5))
+a = A(x_3)
+b = B(a)
+c = C(b)
+
+assert c.creator == C
+assert c.creator.input == b
+assert c.creator.input.creator == B
+assert c.creator.input.creator.input == a
+assert c.creator.input.creator.input.creator == A
+assert c.creator.input.creator.input.creator.input == x_3
+
+print(type(c))
+print(c.data)
+
+c.grad = np.array(1.0)
+b.grad = C.backward(c.grad)
+a.grad = B.backward(b.grad)
+x_3.grad = A.backward(a.grad)
+print(x_3.grad)
+
+print("------------------ Chap7 ------------------")
+
+c.grad = np.array(1.0)
+
+C = c.creator
+b = C.input
+b.grad = C.backward(c.grad)
+
+B = b.creator
+a = B.input
+a.grad = B.backward(b.grad)
+
+A = a.creator
+x_3 = A.input
+x_3.grad = A.backward(a.grad)
+
+print(x_3.grad)
+
+print("------------------ Chap7 adjust_autograd ------------------")
+
+c.grad = np.array(1.0)
+c.backward()
+
+print(x_3.grad)
