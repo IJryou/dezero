@@ -2,6 +2,10 @@ import numpy as np
 
 class Variable:
     def __init__(self, data):
+        if data is not None:
+            if not isinstance(data, np.ndarray):
+                raise TypeError(f'{type(data)}은(는) 지원하지 않습니다.')
+        
         self.data = data
         self.grad = None
         self.creator = None
@@ -10,6 +14,9 @@ class Variable:
         self.creator = func
 
     def backward(self):
+        if self.grad is None:
+            self.grad = np.ones_like(self.data) # 주어진 데이터와 똑같은 shape의 input 생성
+
         funcs = [self.creator]
         while funcs:
             f = funcs.pop() # 앞의 함수를 가져온다
@@ -23,7 +30,7 @@ class Function:
     def __call__(self, input): # 여기서 input은 variable 인스턴스로 가정
         x = input.data # data를 꺼낸다
         y = self.forward(x)
-        output = Variable(y) # Variable 형태로 되돌린다
+        output = Variable(as_array(y)) # Variable 형태로 되돌린다
         output.set_creator(self) # 출력 변수에 창조자(creator) 설정
         self.input = input # 입력변수를 기억해둔다
         self.output = output # 출력도 저장해버리기
@@ -51,9 +58,24 @@ class Exp(Function):
         x = self.input.data
         return np.exp(x) * gy
 
-def numerical_diff(f, x, eps=1e-4):
-    x0 = Variable(x.data + eps)
-    x1 = Variable(x.data - eps)
+def square(x):
+    f = Square()
+    return f(x)
+
+def exp(x):
+    f = Exp()
+    return f(x) # Exp()(x)
+
+def as_array(x):
+    if np.isscalar(x):
+        return np.array(x)
+    return x
+    
+def numerical_diff(f, x, eps=as_array(1e-4)):
+    input_x0 = np.array(x.data + eps) # Variable 선언단계에서 data type 안맞으면 에러남
+    input_x1 = np.array(x.data - eps)
+    x0 = Variable(input_x0)
+    x1 = Variable(input_x1)
     y0 = f(x0)
     y1 = f(x1)
     return (y0.data - y1.data) / (2*eps)
@@ -75,7 +97,7 @@ x = np.array([[1,2,3],
             [4,5,6]])
 print(x.ndim)
 
-x_1 = Variable(np.array(10)) # variable의 인스턴스 생성
+x_1 = Variable(np.array(10.0)) # variable의 인스턴스 생성
 f = Square() # Function 선언
 y = f(x_1)
 
@@ -166,3 +188,22 @@ c.grad = np.array(1.0)
 c.backward()
 
 print(x_3.grad)
+
+print("------------------ Chap9 method to ftn ------------------")
+
+x = Variable(np.array(0.5))
+# a = square(x)
+# b = exp(a)
+# c = square(b)
+c = square(exp(square(x)))
+
+
+c.grad = np.array(1.0)
+c.backward()
+print(x.grad)
+print("------------------ Chap9 modified ------------------")
+
+x = Variable(np.array(0.5))
+c = square(exp(square(x)))
+c.backward()
+print(x.grad)
